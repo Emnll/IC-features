@@ -9,7 +9,7 @@ from numpy import set_printoptions
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-from sklearn.model_selection import GridSearchCV 
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 
 from imblearn.over_sampling import SMOTE
 from imblearn.combine import SMOTEENN
@@ -63,7 +63,6 @@ df = pd.concat([df_cel, df_sce, df_dme], ignore_index=True)
 
 """ Início ML """
 
-#%%
 # Função para validação cruzada sem o uso de balanceamento na amostra de validação
 
 def validacao_cruzada(model, X, y, sampling = False, method_sampling = None):
@@ -113,6 +112,24 @@ def gridsearch(X_train, y_train, model, param_grid, scoring, kfold):
     means = grid_result.cv_results_['mean_test_score']
     stds = grid_result.cv_results_['std_test_score']
     params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f): %r" % (mean, stdev, param))
+
+#%%
+def randomizedSearch(X_train, y_train, model, param_grid, scoring, kfold, n_iter):
+    
+    # busca exaustiva de hiperparâmetros com RandomizedSearchCV
+    random = RandomizedSearchCV(estimator=model, param_distributions=param_grid, n_iter=n_iter,
+                                verbose=3, scoring=scoring, cv=kfold, random_state=42)
+    random_result = random.fit(X_train, y_train)
+
+    # imprime o melhor resultado
+    print("Melhor: %f usando %s" % (random_result.best_score_, random_result.best_params_)) 
+
+    # imprime todos os resultados
+    means = random_result.cv_results_['mean_test_score']
+    stds = random_result.cv_results_['std_test_score']
+    params = random_result.cv_results_['params']
     for mean, stdev, param in zip(means, stds, params):
         print("%f (%f): %r" % (mean, stdev, param))
 
@@ -181,8 +198,17 @@ kfold = 5
 
 rfc = RandomForestClassifier(random_state = seed)
 
+#%%
+""" Escolha hiperparâmetros com GridSearchCV ou RandomizedSearchCV"""
+#%%
 # Busca de Hiperparametros
+# Grid Search
 gridsearch(X_train_sample, y_train_sample, rfc, param_grid, scoring, kfold)
+
+#%%
+# Randomized Search
+# Foram escolhidos 36 iterações para ser a metade do gridsearch (72 combinações)
+randomizedSearch(X_train_sample, y_train_sample, rfc, param_grid, scoring, kfold, n_iter=36)
 # %%
 rfc = RandomForestClassifier(bootstrap= False, criterion= 'entropy', 
                              max_depth= 10, n_estimators= 300, random_state = seed)
