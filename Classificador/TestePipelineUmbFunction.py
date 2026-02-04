@@ -14,7 +14,9 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from imblearn.over_sampling import SMOTE
 from imblearn.combine import SMOTEENN
 from imblearn.under_sampling import RandomUnderSampler
+from imblearn.pipeline import Pipeline as ImbPipeline
 
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
@@ -60,78 +62,6 @@ df = pd.concat([df_cel, df_sce, df_dme], ignore_index=True)
 #%%
 
 """ Início ML """
-
-# Função para validação cruzada sem o uso de balanceamento na amostra de validação
-
-def validacao_cruzada(model, X, y, sampling = False, method_sampling = None):
-    kfold = KFold(n_splits = 5, shuffle=True)
-    
-    acuracias_split = []
-    
-    for idx, (idx_treino, idx_validacao) in enumerate(kfold.split(X)):
-        X_split_treino = X.iloc[idx_treino, :]
-        y_split_treino = y.iloc[idx_treino, :]
-        
-        
-        if sampling: 
-            # Método de Sampling
-            sm = method_sampling
-            X_split_treino, y_split_treino = sm.fit_resample(X_split_treino, y_split_treino)
-            
-        model.fit(X_split_treino, y_split_treino.values.ravel())  
-        
-        X_split_validacao = X.iloc[idx_validacao, :]
-        y_split_validacao = y.iloc[idx_validacao, :]
-        
-        
-        pred_validacoes = model.predict(X_split_validacao)
-        
-        acuracia_split = accuracy_score(y_split_validacao, pred_validacoes)
-        
-        acuracias_split.append(acuracia_split)
-        
-        print(f'Acurácia do split {idx}: {acuracia_split}')
-        
-        mean = np.mean(acuracias_split)
-        
-    return print(f'Média de Acurácia na validação cruzada: {mean}')
-
-# %%
-def gridsearch(X_train, y_train, model, param_grid, scoring, kfold):
-    
-    # busca exaustiva de hiperparâmetros com GridSearchCV
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, verbose=3, scoring=scoring, cv=kfold)
-    grid_result = grid.fit(X_train, y_train)
-
-    # imprime o melhor resultado
-    print("Melhor: %f usando %s" % (grid_result.best_score_, grid_result.best_params_)) 
-
-    # imprime todos os resultados
-    means = grid_result.cv_results_['mean_test_score']
-    stds = grid_result.cv_results_['std_test_score']
-    params = grid_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f): %r" % (mean, stdev, param))
-
-#%%
-def randomizedSearch(X_train, y_train, model, param_grid, scoring, kfold, n_iter):
-    
-    # busca exaustiva de hiperparâmetros com RandomizedSearchCV
-    random = RandomizedSearchCV(estimator=model, param_distributions=param_grid, n_iter=n_iter,
-                                verbose=3, scoring=scoring, cv=kfold, random_state=42)
-    random_result = random.fit(X_train, y_train)
-
-    # imprime o melhor resultado
-    print("Melhor: %f usando %s" % (random_result.best_score_, random_result.best_params_)) 
-
-    # imprime todos os resultados
-    means = random_result.cv_results_['mean_test_score']
-    stds = random_result.cv_results_['std_test_score']
-    params = random_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f): %r" % (mean, stdev, param))
-
-#%%
 # Separação em conjuntos de treino e teste
 X = df.drop(['Locus','IsEssential', 'Sequence'], axis=1)
 
@@ -181,57 +111,186 @@ sample = SMOTEENN(random_state=seed)
 X_train_sample, y_train_sample = sample.fit_resample(X_train, y_train)
 
 y_train_sample.value_counts()
-# %%
-param_grid = dict(max_depth =[5,6,7,8,9,10],
-                  bootstrap = [True, False],
-                  criterion = ["gini", "entropy"],
-                  n_estimators= [100,200,300])
-
-# %%
-
-"""Algoritmo Random Forest"""
-
-scoring = 'roc_auc'
-kfold = 5
-
-rfc = RandomForestClassifier(random_state = seed)
 
 #%%
-""" Escolha hiperparâmetros com GridSearchCV ou RandomizedSearchCV"""
-#%%
-# Busca de Hiperparametros
-# Grid Search
-gridsearch(X_train_sample, y_train_sample, rfc, param_grid, scoring, kfold)
+""" Teste da função de Pipeline para os métodos de balanceamento """
 
-#%%
-# Randomized Search
-# Foram escolhidos 36 iterações para ser a metade do gridsearch (72 combinações)
-randomizedSearch(X_train_sample, y_train_sample, rfc, param_grid, scoring, kfold, n_iter=36)
-# %%
-rfc = RandomForestClassifier(bootstrap= False, criterion= 'entropy', 
-                             max_depth= 10, n_estimators= 300, random_state = seed)
+from sklearn.model_selection import cross_validate, cross_val_score
+import numpy as np
 
-rfc.fit(X_train_under, y_train_under)
-# Verificando a importância de cada feature
+pipelines = {
+    'undersample': ImbPipeline([
+        ('sampler', RandomUnderSampler(random_state=seed)),
+        ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
+    ]),
+    
+    'oversample': ImbPipeline([
+        ('sampler', SMOTE(random_state=seed)),
+        ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
+    ]),
+    
+    'smoteenn': ImbPipeline([
+        ('sampler', SMOTEENN(random_state=seed)),
+        ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
+    ])
+}
 
-plt.rcParams['figure.figsize'] = (12,10)
+# Grid de parâmetros
+param_grid = {
+    'classifier__max_depth': [5, 6, 7, 8, 9, 10],
+    'classifier__bootstrap': [True, False],
+    'classifier__criterion': ["gini", "entropy"],
+    'classifier__n_estimators': [100, 200, 300]
+}
 
-importances = pd.Series(data=rfc.feature_importances_, index=X_train.columns.values)
-sns.barplot(x=importances, y=importances.index, orient='h').set_title('Importância de cada feature')
+# Testar cada pipeline
+results = {}
+for name, pipeline in pipelines.items():
+    print(f"\n{'='*70}")
+    print(f"Testando: {name}")
+    print('='*70)
+    
+    # GridSearch
+    grid_search = GridSearchCV(
+        pipeline, 
+        param_grid, 
+        cv=5, 
+        scoring='roc_auc',
+        n_jobs=-1,
+        verbose=1,
+        return_train_score=True
+    )
+    
+    grid_search.fit(X_train, y_train)
+    
+    # Pegar o melhor modelo
+    best_pipeline = grid_search.best_estimator_
+    
+    # VALIDAÇÃO CRUZADA DETALHADA COM O MELHOR MODELO
+    print(f"\n{'='*70}")
+    print(f"VALIDAÇÃO CRUZADA DETALHADA - {name}")
+    print('='*70)
+    
+    scoring_metrics = {
+        'accuracy': 'accuracy',
+        'precision': 'precision',
+        'recall': 'recall',
+        'f1': 'f1',
+        'roc_auc': 'roc_auc'
+    }
+    
+    cv_results = cross_validate(
+        best_pipeline, 
+        X_train, 
+        y_train, 
+        cv=5, 
+        scoring=scoring_metrics,
+        return_train_score=True
+    )
+    
+    # Calcular médias e desvios
+    cv_summary = {}
+    for metric in scoring_metrics.keys():
+        test_scores = cv_results[f'test_{metric}']
+        train_scores = cv_results[f'train_{metric}']
+        
+        cv_summary[metric] = {
+            'test_mean': test_scores.mean(),
+            'test_std': test_scores.std(),
+            'train_mean': train_scores.mean(),
+            'train_std': train_scores.std()
+        }
+        
+        print(f"\n{metric.upper()}:")
+        print(f"  Treino: {train_scores.mean():.4f} (+/- {train_scores.std():.4f})")
+        print(f"  Teste:  {test_scores.mean():.4f} (+/- {test_scores.std():.4f})")
+    
+    # Armazenar resultados
+    results[name] = {
+        'best_score': grid_search.best_score_,
+        'best_params': grid_search.best_params_,
+        'best_estimator': best_pipeline,
+        'cv_summary': cv_summary
+    }
+    
+    print(f"\nMelhores parâmetros: {grid_search.best_params_}")
 
-#%%
-# Validação cruzada 
-validacao_cruzada(rfc, X_train, y_train, True, undersample)
+# COMPARAÇÃO FINAL
+print("\n" + "="*70)
+print("COMPARAÇÃO FINAL - VALIDAÇÃO CRUZADA")
+print("="*70)
+print(f"{'Método':<15} {'ROC-AUC':<12} {'Accuracy':<12} {'F1-Score':<12} {'Recall':<12}")
+print("-"*70)
 
-#%%
-y_pred = rfc.predict(X_test)
+for name, result in results.items():
+    roc_auc = result['cv_summary']['roc_auc']['test_mean']
+    accuracy = result['cv_summary']['accuracy']['test_mean']
+    f1 = result['cv_summary']['f1']['test_mean']
+    recall = result['cv_summary']['recall']['test_mean']
+    
+    print(f"{name:<15} {roc_auc:<12.4f} {accuracy:<12.4f} {f1:<12.4f} {recall:<12.4f}")
 
-#%%
-# Scikit-learn
+# Selecionar o melhor modelo (por ROC-AUC)
+best_method = max(results.items(), key=lambda x: x[1]['cv_summary']['roc_auc']['test_mean'])
+print(f"\n{'='*70}")
+print(f"MELHOR MÉTODO: {best_method[0]}")
+print(f"ROC-AUC: {best_method[1]['cv_summary']['roc_auc']['test_mean']:.4f}")
+print('='*70)
+
+# Usar o melhor modelo para predições no conjunto de teste
+best_model = best_method[1]['best_estimator']
+
+print("\n" + "="*70)
+print("AVALIAÇÃO NO CONJUNTO DE TESTE")
+print("="*70)
+
+y_pred = best_model.predict(X_test)
+y_proba = best_model.predict_proba(X_test)[:, 1]
+
+
+
+print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
 
-#%%
+print("\nClassification Report:")
 print(classification_report(y_test, y_pred))
+
+print(f"\nROC-AUC no conjunto de teste: {roc_auc_score(y_test, y_proba):.4f}")
+
+# FEATURE IMPORTANCE
+print("\n" + "="*70)
+print("FEATURE IMPORTANCE")
+print("="*70)
+
+rfc = best_model.named_steps['classifier']
+
+plt.rcParams['figure.figsize'] = (12, 10)
+importances = pd.Series(data=rfc.feature_importances_, index=X_train.columns.values)
+importances_sorted = importances.sort_values(ascending=True)
+
+plt.figure(figsize=(12, 10))
+sns.barplot(x=importances_sorted, y=importances_sorted.index, orient='h')
+plt.title(f'Importância de cada feature - {best_method[0]}')
+plt.xlabel('Importância')
+plt.tight_layout()
+plt.show()
+
+# PREDIÇÕES EM DADOS EXTERNOS
+print("\n" + "="*70)
+print("PREDIÇÕES EM DADOS EXTERNOS")
+print("="*70)
+
+# Musculus
+y_musculus_pred = best_model.predict(X_musculus)
+print("\nMUSCULUS:")
+print(f"Predições: {y_musculus_pred}")
+print("\nClassification Report (Musculus):")
+print(classification_report(y_musculus, y_musculus_pred))
+
+# Mansoni
+y_mansoni_pred = best_model.predict(X_mansoni)
+print("\nMANSONI:")
+print(f"Predições: {y_mansoni_pred}")
 
 #%%
 """ Organizando a ordem das features """
@@ -248,37 +307,10 @@ feature_order = [
 
 X_musculus = X_musculus[feature_order]
 X_mansoni = X_mansoni[feature_order]
-
-#%%
-""" Organizando features sem emboss """
-
-feature_order = [
-    'Sequence_Length', 'Aromaticity', 'Sec_Struct_Helix', 'Sec_Struct_Turn', 'Sec_Struct_Sheet',
-    'Percent_A', 'Percent_C', 'Percent_D', 'Percent_E', 'Percent_F', 'Percent_G', 'Percent_H',
-    'Percent_I', 'Percent_K', 'Percent_L', 'Percent_M', 'Percent_N', 'Percent_P', 'Percent_Q',
-    'Percent_R', 'Percent_S', 'Percent_T', 'Percent_V', 'Percent_W', 'Percent_Y', 'Local Average Connectivity',
-    'Density of Maximum neighborhood Component', 'Topology Potential', 'Edge Clustering Coefficient',
-    'DegreeCentrality', 'EigenvectorCentrality', 'BetweennessCentrality', 'ClosenessCentrality', 'Clustering'
-]
-
-X_musculus = X_musculus[feature_order]
-X_mansoni = X_mansoni[feature_order]
-
-#%%
-""" Organizando features com feature selection """
-
-feature_order = [
-    'Sec_Struct_Sheet', 'Percent_C', 'Local Average Connectivity',
-    'Density of Maximum neighborhood Component', 'Topology Potential', 'Edge Clustering Coefficient',
-    'DegreeCentrality', 'EigenvectorCentrality', 'BetweennessCentrality', 'ClosenessCentrality', 'Clustering'
-]
-
-X_musculus = X_musculus[feature_order]
-X_mansoni = X_mansoni[feature_order]
 #%%
 # Predizendo proteínas do mansoni
 
-y_musculus_rf_over = rfc.predict(X_musculus)
+y_musculus_rf_over = best_model.predict(X_musculus)
 
 print(y_musculus_rf_over)
 
@@ -287,12 +319,12 @@ print(classification_report(y_musculus, y_musculus_rf_over))
 
 #%%
 
-y_mansoni_rf_over = rfc.predict(X_mansoni)
+y_mansoni_rf_over = best_model.predict(X_mansoni)
 print(y_mansoni_rf_over)
 
 #%%
 
-y_mansoni_rf_under = rfc.predict(X_mansoni)
+y_mansoni_rf_under = best_model.predict(X_mansoni)
 print(y_mansoni_rf_under)
 
 
