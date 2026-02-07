@@ -1,10 +1,8 @@
 #%%
-import numpy as np
+from datetime import datetime
 import pandas as pd
-#%%
 import seaborn as sns
 import matplotlib.pyplot as plt
-import numpy as np
 
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -16,9 +14,11 @@ from imblearn.under_sampling import RandomUnderSampler
 from imblearn.pipeline import Pipeline as ImbPipeline
 
 from sklearn.metrics import roc_auc_score, confusion_matrix, classification_report, accuracy_score
-from sklearn.model_selection import train_test_split, KFold, cross_validate, GridSearchCV
+from sklearn.model_selection import train_test_split, cross_validate, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 
+import pickle
+import joblib
 
 import os
 
@@ -77,21 +77,20 @@ y_musculus = df_mus['IsEssential']
 y_musculus
 
 #%%
-""" Teste da função de Pipeline para os métodos de balanceamento """
-
+" ================= Pipeline Random Forest ================== "
 
 pipelines = {
-    'undersample': ImbPipeline([
+    'rf-undersample': ImbPipeline([
         ('sampler', RandomUnderSampler(random_state=seed)),
         ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
     ]),
     
-    'oversample': ImbPipeline([
+    'rf-oversample': ImbPipeline([
         ('sampler', SMOTE(random_state=seed)),
         ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
     ]),
     
-    'smoteenn': ImbPipeline([
+    'rf-smoteenn': ImbPipeline([
         ('sampler', SMOTEENN(random_state=seed)),
         ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
     ])
@@ -161,6 +160,22 @@ for name, pipeline in pipelines.items():
         'best_estimator': best_grid.best_estimator_,
         'cv_summary': cv_summary
     }
+
+    model_data = {
+        'pipeline': best_grid.best_estimator_,
+        'pipeline_name': name,
+        'best_params': best_grid.best_params_,
+        'cv_summary': cv_summary,
+        'feature_names': X_train.columns.tolist(),
+        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    filename = f'Modelos-PKL/{name}_model.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(model_data, f)
+    
+    print(f"✅ Salvo: {filename}")
+    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
     
     print(f"\nMelhores parâmetros: {best_grid.best_params_}")
 # COMPARAÇÃO FINAL
@@ -341,6 +356,23 @@ for name, pipeline in pipelines.items():
         'best_estimator': best_grid.best_estimator_,
         'cv_summary': cv_summary
     }
+
+    
+    model_data = {
+        'pipeline': best_grid.best_estimator_,
+        'pipeline_name': name,
+        'best_params': best_grid.best_params_,
+        'cv_summary': cv_summary,
+        'feature_names': X_train.columns.tolist(),
+        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    filename = f'Modelos-PKL/{name}_model.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(model_data, f)
+    
+    print(f"✅ Salvo: {filename}")
+    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
     
     print(f"\nMelhores parâmetros: {best_grid.best_params_}")
 # COMPARAÇÃO FINAL
@@ -435,7 +467,6 @@ y_mansoni_pred = best_model.predict(X_mansoni)
 print("\nMANSONI:")
 print(f"Predições: {y_mansoni_pred}")
 
-#%%
 #%%
 
 "============ Pipeline Gradient Boosting =============="""
@@ -520,6 +551,22 @@ for name, pipeline in pipelines.items():
         'best_estimator': best_grid.best_estimator_,
         'cv_summary': cv_summary
     }
+
+    model_data = {
+        'pipeline': best_grid.best_estimator_,
+        'pipeline_name': name,
+        'best_params': best_grid.best_params_,
+        'cv_summary': cv_summary,
+        'feature_names': X_train.columns.tolist(),
+        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    filename = f'Modelos-PKL/{name}_model.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(model_data, f)
+    
+    print(f"✅ Salvo: {filename}")
+    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
     
     print(f"\nMelhores parâmetros: {best_grid.best_params_}")
 # COMPARAÇÃO FINAL
@@ -614,3 +661,7 @@ y_mansoni_pred = best_model.predict(X_mansoni)
 print("\nMANSONI:")
 print(f"Predições: {y_mansoni_pred}")
 #%%
+
+""" Carregando os melhores modelos dos tipos de classificadores """
+# Os melhores modelos de cada tipo de classificador foram salvos e agora serão utilizados para predizer o mus musculus, então com esses resultados será feitas a interseção e por fim as métricas dos resultados
+# Por fim o mesmo será feito no organismo alvo, mansoni
