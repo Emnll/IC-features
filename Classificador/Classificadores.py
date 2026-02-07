@@ -21,6 +21,8 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import cross_val_score, KFold
+from sklearn.feature_selection import VarianceThreshold
+import matplotlib.pyplot as plt
 
 import os
 
@@ -96,7 +98,6 @@ def validacao_cruzada(model, X, y, sampling = False, method_sampling = None):
         
     return print(f'Média de Acurácia na validação cruzada: {mean}')
 
-# %%
 def gridsearch(X_train, y_train, model, param_grid, scoring, kfold):
     
     # busca exaustiva de hiperparâmetros com GridSearchCV
@@ -113,7 +114,8 @@ def gridsearch(X_train, y_train, model, param_grid, scoring, kfold):
     for mean, stdev, param in zip(means, stds, params):
         print("%f (%f): %r" % (mean, stdev, param))
 
-#%%
+    return grid_result.best_estimator_
+
 def randomizedSearch(X_train, y_train, model, param_grid, scoring, kfold, n_iter):
     
     # busca exaustiva de hiperparâmetros com RandomizedSearchCV
@@ -143,15 +145,47 @@ X_train, X_test, y_train, y_test = train_test_split(X, y,
                                                     random_state=seed, 
                                                     stratify=y)
 #%%
+# Após criar X_train e antes de aplicar resampling
+
+# Verificar variância de cada feature
+variances = X_train.var()
+print("Variâncias das features:")
+print(variances.sort_values())
+
+# Visualizar variâncias
+plt.figure(figsize=(12, 8))
+variances.sort_values().plot(kind='barh')
+plt.xlabel('Variância')
+plt.title('Variância de cada Feature')
+plt.tight_layout()
+plt.show()
+
+#%%
+threshold = 0.01  # Ajuste conforme necessário
+selector = VarianceThreshold(threshold=threshold)
+
+X_train_selected = selector.fit_transform(X_train)
+X_test_selected = selector.transform(X_test)
+
+selected_features = X_train.columns[selector.get_support()].tolist()
+print(f"\nFeatures selecionadas ({len(selected_features)}):")
+print(selected_features)
+
+X_train = pd.DataFrame(X_train_selected, columns=selected_features, index=X_train.index)
+X_test = pd.DataFrame(X_test_selected, columns=selected_features, index=X_test.index)
+
+#%%
 # Dados mansoni
 df_mansoni = df_man.set_index('Locus')
 X_mansoni = df_mansoni.drop(['Sequence'], axis=1)
+X_mansoni = X_mansoni[selected_features]
 X_mansoni
 
 #%%
 # Dados musculus
 df_musculus = df_mus.set_index('Locus')
 X_musculus = df_musculus.drop(['Sequence', 'IsEssential'], axis=1)
+X_musculus = X_musculus[selected_features]
 y_musculus = df_mus['IsEssential']
 y_musculus
 
