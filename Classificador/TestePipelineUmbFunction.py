@@ -35,6 +35,23 @@ def gridsearch(X_train, y_train, model, param_grid, scoring, kfold):
     return grid_result
 
 #%%
+def salva_pickle(filename, best_grid, cv_summary, name, X_train):
+    model_data = {
+        'pipeline': best_grid.best_estimator_,
+        'pipeline_name': name,
+        'best_params': best_grid.best_params_,
+        'cv_summary': cv_summary,
+        'feature_names': X_train.columns.tolist(),
+        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    filename = f'Modelos-PKL/{name}_model.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(model_data, f)
+    
+    print(f"✅ Salvo: {filename}")
+    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
+#%%
 pasta_atual = os.getcwd()
 print(pasta_atual)
 
@@ -56,7 +73,7 @@ df = pd.concat([df_cel, df_sce, df_dme], ignore_index=True)
 # Separação em conjuntos de treino e teste
 X = df.drop(['Locus','IsEssential', 'Sequence'], axis=1)
 
-y = df[['IsEssential']]
+y = df['IsEssential']
 test_size = 0.2
 seed = 42
 X_train, X_test, y_train, y_test = train_test_split(X, y, 
@@ -160,22 +177,6 @@ for name, pipeline in pipelines.items():
         'best_estimator': best_grid.best_estimator_,
         'cv_summary': cv_summary
     }
-
-    model_data = {
-        'pipeline': best_grid.best_estimator_,
-        'pipeline_name': name,
-        'best_params': best_grid.best_params_,
-        'cv_summary': cv_summary,
-        'feature_names': X_train.columns.tolist(),
-        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }
-
-    filename = f'Modelos-PKL/{name}_model.pkl'
-    with open(filename, 'wb') as f:
-        pickle.dump(model_data, f)
-    
-    print(f"✅ Salvo: {filename}")
-    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
     
     print(f"\nMelhores parâmetros: {best_grid.best_params_}")
 # COMPARAÇÃO FINAL
@@ -199,6 +200,22 @@ print(f"\n{'='*70}")
 print(f"MELHOR MÉTODO: {best_method[0]}")
 print(f"ROC-AUC: {best_method[1]['cv_summary']['roc_auc']['test_mean']:.4f}")
 print('='*70)
+
+model_data = {
+    'pipeline': best_method[1]['best_estimator'],
+    'pipeline_name': best_method[0],
+    'best_params': best_method[1]['best_params'],
+    'cv_summary': best_method[1]['cv_summary'],
+    'feature_names': X_train.columns.tolist(),
+    'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+}
+
+filename = f'Modelos-PKL/{best_method[0]}_model.pkl'
+with open(filename, 'wb') as f:
+    pickle.dump(model_data, f)
+    
+print(f"✅ Salvo: {filename}")
+print(f"F1-Score: {best_method[1]['cv_summary']['f1']['test_mean']:.4f}")
 
 # Usar o melhor modelo para predições no conjunto de teste
 best_model = best_method[1]['best_estimator']
@@ -356,23 +373,6 @@ for name, pipeline in pipelines.items():
         'best_estimator': best_grid.best_estimator_,
         'cv_summary': cv_summary
     }
-
-    
-    model_data = {
-        'pipeline': best_grid.best_estimator_,
-        'pipeline_name': name,
-        'best_params': best_grid.best_params_,
-        'cv_summary': cv_summary,
-        'feature_names': X_train.columns.tolist(),
-        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }
-
-    filename = f'Modelos-PKL/{name}_model.pkl'
-    with open(filename, 'wb') as f:
-        pickle.dump(model_data, f)
-    
-    print(f"✅ Salvo: {filename}")
-    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
     
     print(f"\nMelhores parâmetros: {best_grid.best_params_}")
 # COMPARAÇÃO FINAL
@@ -396,6 +396,22 @@ print(f"\n{'='*70}")
 print(f"MELHOR MÉTODO: {best_method[0]}")
 print(f"ROC-AUC: {best_method[1]['cv_summary']['roc_auc']['test_mean']:.4f}")
 print('='*70)
+
+model_data = {
+    'pipeline': best_method[1]['best_estimator'],
+    'pipeline_name': best_method[0],
+    'best_params': best_method[1]['best_params'],
+    'cv_summary': best_method[1]['cv_summary'],
+    'feature_names': X_train.columns.tolist(),
+    'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+}
+
+filename = f'Modelos-PKL/{best_method[0]}_model.pkl'
+with open(filename, 'wb') as f:
+    pickle.dump(model_data, f)
+    
+print(f"✅ Salvo: {filename}")
+print(f"F1-Score: {best_method[1]['cv_summary']['f1']['test_mean']:.4f}")
 
 # Usar o melhor modelo para predições no conjunto de teste
 best_model = best_method[1]['best_estimator']
@@ -551,22 +567,6 @@ for name, pipeline in pipelines.items():
         'best_estimator': best_grid.best_estimator_,
         'cv_summary': cv_summary
     }
-
-    model_data = {
-        'pipeline': best_grid.best_estimator_,
-        'pipeline_name': name,
-        'best_params': best_grid.best_params_,
-        'cv_summary': cv_summary,
-        'feature_names': X_train.columns.tolist(),
-        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }
-
-    filename = f'Modelos-PKL/{name}_model.pkl'
-    with open(filename, 'wb') as f:
-        pickle.dump(model_data, f)
-    
-    print(f"✅ Salvo: {filename}")
-    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
     
     print(f"\nMelhores parâmetros: {best_grid.best_params_}")
 # COMPARAÇÃO FINAL
@@ -590,6 +590,22 @@ print(f"\n{'='*70}")
 print(f"MELHOR MÉTODO: {best_method[0]}")
 print(f"ROC-AUC: {best_method[1]['cv_summary']['roc_auc']['test_mean']:.4f}")
 print('='*70)
+
+model_data = {
+    'pipeline': best_method[1]['best_estimator'],
+    'pipeline_name': best_method[0],
+    'best_params': best_method[1]['best_params'],
+    'cv_summary': best_method[1]['cv_summary'],
+    'feature_names': X_train.columns.tolist(),
+    'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+}
+
+filename = f'Modelos-PKL/{best_method[0]}_model.pkl'
+with open(filename, 'wb') as f:
+    pickle.dump(model_data, f)
+    
+print(f"✅ Salvo: {filename}")
+print(f"F1-Score: {best_method[1]['cv_summary']['f1']['test_mean']:.4f}")
 
 # Usar o melhor modelo para predições no conjunto de teste
 best_model = best_method[1]['best_estimator']
@@ -665,3 +681,30 @@ print(f"Predições: {y_mansoni_pred}")
 """ Carregando os melhores modelos dos tipos de classificadores """
 # Os melhores modelos de cada tipo de classificador foram salvos e agora serão utilizados para predizer o mus musculus, então com esses resultados será feitas a interseção e por fim as métricas dos resultados
 # Por fim o mesmo será feito no organismo alvo, mansoni
+
+
+print("\n" + "="*70)
+print("PREDIÇÕES NO MUS MUSCULUS")
+print("="*70)
+
+# Predições de cada modelo
+predictions_musculus = {}
+
+for model_type, info in best_models.items():
+    model = info['model']
+    model_name = info['name']
+    
+    # Fazer predições
+    y_pred = model.predict(X_musculus)
+    y_proba = model.predict_proba(X_musculus)[:, 1]
+    
+    predictions_musculus[model_type] = {
+        'predictions': y_pred,
+        'probabilities': y_proba,
+        'model_name': model_name
+    }
+    
+    # Avaliar
+    print(f"\n{model_type} ({model_name}):")
+    print(f"  Predições positivas: {y_pred.sum()}/{len(y_pred)}")
+    print("\n" + classification_report(y_musculus, y_pred, target_names=['Não-Essencial', 'Essencial']))
