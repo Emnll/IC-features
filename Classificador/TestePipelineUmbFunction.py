@@ -17,6 +17,8 @@ from sklearn.metrics import roc_auc_score, confusion_matrix, classification_repo
 from sklearn.model_selection import train_test_split, cross_validate, GridSearchCV, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier
 
+from sklearn.feature_selection import RFE, SelectKBest, f_classif, VarianceThreshold, SelectFromModel
+
 import pickle
 import joblib
 
@@ -45,22 +47,29 @@ def randomizedSearch(X_train, y_train, model, param_grid, scoring, kfold, n_iter
 
     return random_result
 #%%
-def salva_pickle(filename, best_grid, cv_summary, name, X_train):
-    model_data = {
-        'pipeline': best_grid.best_estimator_,
-        'pipeline_name': name,
-        'best_params': best_grid.best_params_,
-        'cv_summary': cv_summary,
-        'feature_names': X_train.columns.tolist(),
-        'trained_on': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }
+def feature_selection(X_train, y_train, model, k, method='rfe'):
+    if method == 'rfe':
+        # Seleção de features usando RFE
+        selector = RFE(estimator=model, n_features_to_select=k, step=1)
+        selector = selector.fit(X_train, y_train)
+    elif method == 'selectkbest':
+        # Seleção de features usando SelectKBest
+        selector = SelectKBest(score_func=f_classif, k=k)
+        selector = selector.fit(X_train, y_train)
+    elif method == 'variancethreshold':
+        # Seleção de features usando VarianceThreshold
+        selector = VarianceThreshold(threshold=0.01)
+        selector = selector.fit(X_train, y_train)
+    elif method == 'selectfrommodel':
+        # Seleção de features usando SelectFromModel
+        selector = SelectFromModel(estimator=model, threshold='median')
+        selector = selector.fit(X_train, y_train)
 
-    filename = f'Modelos-PKL/{name}_model.pkl'
-    with open(filename, 'wb') as f:
-        pickle.dump(model_data, f)
-    
-    print(f"✅ Salvo: {filename}")
-    print(f"F1-Score: {cv_summary['f1']['test_mean']:.4f}")
+    # Imprime as features selecionadas
+    selected_features = X_train.columns[selector.support_]
+    print(f"Features selecionadas: {selected_features.tolist()}")
+
+    return selected_features
 #%%
 pasta_atual = os.getcwd()
 print(pasta_atual)
