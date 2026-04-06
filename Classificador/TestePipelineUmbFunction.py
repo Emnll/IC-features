@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
 
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -14,7 +15,7 @@ from imblearn.under_sampling import RandomUnderSampler
 from imblearn.pipeline import Pipeline as ImbPipeline
 
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, confusion_matrix, classification_report, accuracy_score
-from sklearn.model_selection import train_test_split, cross_validate, GridSearchCV, RandomizedSearchCV, StratifiedKFold
+from sklearn.model_selection import train_test_split, cross_validate, GridSearchCV, RandomizedSearchCV, StratifiedKFold, KFold
 from sklearn.ensemble import RandomForestClassifier
 
 from sklearn.feature_selection import RFE, SelectKBest, f_classif, VarianceThreshold, SelectFromModel
@@ -29,7 +30,6 @@ from tqdm import tqdm
 pasta_atual = os.getcwd()
 print(pasta_atual)
 
-#%%
 df_cel = pd.read_csv(os.path.join(pasta_atual, 'Todas_Features/Features_cel.csv'))
 df_sce = pd.read_csv(os.path.join(pasta_atual, 'Todas_Features/Features_sce.csv'))
 df_dme = pd.read_csv(os.path.join(pasta_atual, 'Todas_Features/Features_dme.csv'))
@@ -38,7 +38,6 @@ df_mus = pd.read_csv(os.path.join(pasta_atual, 'Todas_Features/Features_mus.csv'
 
 df_man = pd.read_csv(os.path.join(pasta_atual, 'Todas_Features/Features_man.csv'))
 
-#%%
 df = pd.concat([df_cel, df_sce, df_dme], ignore_index=True)
 
 #%%
@@ -64,20 +63,9 @@ X_musculus = df_musculus.drop(['Sequence', 'IsEssential'], axis=1)
 y_musculus = df_mus['IsEssential']
 
 #%%
-
-def pipeline(param_grid, pipelines, X_train, y_train, X_test, y_test, outer_folds = 5, inner_folds = 3):
+def pipeline(param_grid, pipelines, X_train, y_train, X_test, y_test):
 
     results = {}
-
-    outer_cv = StratifiedKFold(n_splits=outer_folds, shuffle=True, random_state=seed)
-    inner_cv = StratifiedKFold(n_splits=inner_folds, shuffle=True, random_state=seed)
-
-    scoring_metrics = {
-        'precision': 'precision',
-        'recall':    'recall',
-        'f1':        'f1',
-        'roc_auc':   'roc_auc'
-    }
 
     for name, pipeline in tqdm(pipelines.items()):
         print(f"\n{'='*70}")
@@ -85,64 +73,22 @@ def pipeline(param_grid, pipelines, X_train, y_train, X_test, y_test, outer_fold
         print('='*70)
         
         # Pegar o melhor modelo
-        grid = GridSearchCV(estimator=pipeline, param_grid=param_grid, scoring='f1', cv=inner_cv, verbose=3)
+        search = GridSearchCV(estimator=pipeline, param_grid=param_grid, scoring='f1', cv=5, verbose=3, n_jobs = -1)
 
-        cv_results = cross_validate(grid, X_train, y_train, cv=outer_cv, scoring=scoring_metrics, return_train_score=True, return_estimator=True)
+        search.fit(X_train, y_train)
 
-        best_fold_idx = cv_results['test_f1'].argmax()
-        best_estimator = cv_results['estimators'][best_fold_idx].best_estimator_
-        best_params    = cv_results['estimators'][best_fold_idx].best_params_
-        
-        # Calcular médias e desvios
-        cv_summary = {}
-        for metric in scoring_metrics.keys():
-            test_scores = cv_results[f'test_{metric}']
-            train_scores = cv_results[f'train_{metric}']
-            
-            cv_summary[metric] = {
-                'test_mean':  test_scores.mean(),
-                'train_mean': train_scores.mean()
-            }
-            
-            print(f"\n{metric.upper()}:")
-            print(f"  Treino: {train_scores.mean():.4f} (+/- {train_scores.std():.4f})")
-            print(f"  Teste:  {test_scores.mean():.4f} (+/- {test_scores.std():.4f})")
-
-        #Pega o melhor modelo, faz predições no conjunto de teste, calcula as métricas e salva o modelo
-        y_val_pred = best_estimator.predict(X_test)
-        val_metrics = {
-            'f1':        f1_score(y_test, y_val_pred),
-            'precision': precision_score(y_test, y_val_pred),
-            'recall':    recall_score(y_test, y_val_pred),
-        }
-        print(f"Val F1: {val_metrics['f1']:.4f} | "
-              f"Precision: {val_metrics['precision']:.4f} | "
-              f"Recall: {val_metrics['recall']:.4f}")
-
-        model_data = {
-            'pipeline':      best_estimator,
-            'pipeline_name': name,
-            'best_params':   best_params,
-            'cv_summary':    cv_summary,
-            'val_metrics': val_metrics,
-            'feature_names': X_train.columns.tolist(),
-            'trained_on':    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        filename = f'Modelos-PKL/{name}_model.pkl'
-        with open(filename, 'wb') as f:
-            pickle.dump(model_data, f)
-        print(f"Salvo: {filename}")
+        y_pred = search.best_estimator_.predict(X_test)
 
         results[name] = {
-            'cv_summary':     cv_summary,
-            'best_params':    best_params,
-            'best_estimator': best_estimator,
-            'val_metrics':    val_metrics,  # adiciona aqui
+            'best_params': search.best_params_,
+            'best_score_cv': search.best_score_,
+            'test_f1': f1_score(y_test, y_pred),
+            'cv_results': search.cv_results_
         }
-    
+
     return results
 
-def select_best_and_evaluate(results, X_musculus, y_musculus):
+def evaluate_on_musculus(results, X_musculus, y_musculus):
 
     all_metrics = {}
 
@@ -160,19 +106,73 @@ def select_best_and_evaluate(results, X_musculus, y_musculus):
             'recall':    recall_score(y_musculus, y_pred),
         }
 
-    # Tabela comparativa
     print(f"\n{'='*70}")
     print("RESULTADOS EM X_MUSCULUS")
     print(f"{'='*70}")
     print(f"{'Método':<18} {'F1':<12} {'Precision':<12} {'Recall':<12}")
     print("-"*70)
+    
     for name, m in all_metrics.items():
         print(f"{name:<18} {m['f1']:<12.4f} {m['precision']:<12.4f} {m['recall']:<12.4f}")
 
-    best_name = max(all_metrics, key=lambda x: all_metrics[x]['f1'])
-    print(f"\nMelhor: {best_name} (F1: {all_metrics[best_name]['f1']:.4f})")
-
     return all_metrics
+
+def salvar_metricas_csv(results, X_musculus, y_musculus, output_path="resultados_modelos.csv"):
+    
+    rows = []
+
+    for name in results:
+        # Carregar modelo
+        filename = f'Modelos-PKL/{name}_model.pkl'
+        with open(filename, 'rb') as f:
+            model_data = pickle.load(f)
+
+        model = model_data['pipeline']
+
+        # Predição no mus musculus
+        y_pred = model.predict(X_musculus)
+
+        # Métricas
+        f1 = f1_score(y_musculus, y_pred)
+        precision = precision_score(y_musculus, y_pred)
+        recall = recall_score(y_musculus, y_pred)
+
+        # Extrair info
+        best_params = results[name]['best_params']
+        cv_score = results[name]['best_score_cv']
+        test_f1 = results[name]['test_f1']
+
+        # Extrair tipo de sampling (assumindo pipeline com 'sampler')
+        sampler = model.named_steps.get('sampler', None)
+        sampler_name = type(sampler).__name__ if sampler else "None"
+
+        # Nome do modelo
+        classifier = model.named_steps.get('classifier', None)
+        model_name = type(classifier).__name__ if classifier else name
+
+        rows.append({
+            'pipeline_name': name,
+            'model': model_name,
+            'sampling': sampler_name,
+            'best_params': str(best_params),
+            'cv_f1': cv_score,
+            'test_f1': test_f1,
+            'mus_f1': f1,
+            'precision': precision,
+            'recall': recall
+        })
+
+    df = pd.DataFrame(rows)
+
+    # Ordenar pelos melhores
+    df = df.sort_values(by='cv_f1', ascending=False)
+
+    # Salvar CSV
+    df.to_csv(output_path, index=False)
+
+    print(f"Arquivo salvo em: {output_path}")
+
+    return df
 
 def predict_external(best_model, X_mansoni):
     print("\n" + "="*70)
@@ -257,7 +257,7 @@ rfc_grid = {
 }
 
 rfc_results = pipeline(rfc_grid, pipelines, X_train, y_train, X_test, y_test)
-rfc_model, rfc_metrics = select_best_and_evaluate(rfc_results, X_musculus, y_musculus)
+rfc_model, rfc_metrics = salvar_metricas_csv(rfc_results, X_musculus, y_musculus)
 
 
 #%%
@@ -288,7 +288,7 @@ xgb_grid = {
 }
 
 xgb_results = pipeline(xgb_grid, pipelines, X_train, y_train, X_test, y_test)
-xgb_model = print_results(xgb_results)
+xgb_model = salvar_metricas_csv(xgb_results, X_musculus, y_musculus)
 predict_external(xgb_model, X_musculus, y_musculus, X_mansoni)
 #%%
 "============ Pipeline Gradient Boosting =============="""
