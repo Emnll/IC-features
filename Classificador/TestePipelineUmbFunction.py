@@ -6,8 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from xgboost import XGBClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 
 from imblearn.over_sampling import SMOTE
 from imblearn.combine import SMOTEENN
@@ -27,7 +26,7 @@ import mlflow
 
 #%%
 mlflow.set_tracking_uri("http://127.0.0.1:5000/")
-mlflow.set_experiment(experiment_id= 1)
+mlflow.set_experiment(experiment_id= 2)
 
 #%%
 pasta_atual = os.getcwd()
@@ -103,6 +102,17 @@ def pipeline(param_grid, pipelines, X_train, y_train, X_test, y_test, X_musculus
 
             best_model = search.best_estimator_
 
+            selector = best_model.named_steps.get('selector')
+
+            mlflow.log_param(
+                "feature_selection",
+                type(selector).__name__ if selector else "None"
+            )
+
+            # opcional: número de features selecionadas
+            if hasattr(selector, 'k'):
+                mlflow.log_param("n_features_selected", selector.k)
+
             # ===== TEST SET =====
             y_pred_test = best_model.predict(X_test)
             test_f1 = f1_score(y_test, y_pred_test)
@@ -173,16 +183,19 @@ def pipeline(param_grid, pipelines, X_train, y_train, X_test, y_test, X_musculus
 pipelines = {
     'rf-undersample': ImbPipeline([
         ('sampler', RandomUnderSampler(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
     ]),
     
     'rf-oversample': ImbPipeline([
         ('sampler', SMOTE(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
     ]),
     
     'rf-smoteenn': ImbPipeline([
         ('sampler', SMOTEENN(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', RandomForestClassifier(class_weight='balanced', random_state=seed))
     ])
 }
@@ -192,7 +205,9 @@ rfc_grid = {
     'classifier__max_depth': [5, 6, 7, 8, 9, 10],
     'classifier__bootstrap': [True, False],
     'classifier__criterion': ["gini", "entropy"],
-    'classifier__n_estimators': [100, 200, 300]
+    'classifier__n_estimators': [100, 200, 300],
+
+    'selector__k': [10, 20, 30, 40]
 }
 
 rfc_results = pipeline(rfc_grid, pipelines, X_train, y_train, X_test, y_test, X_musculus, y_musculus)
@@ -205,16 +220,19 @@ rfc_results = pipeline(rfc_grid, pipelines, X_train, y_train, X_test, y_test, X_
 pipelines = {
     'xgb_undersample': ImbPipeline([
         ('sampler', RandomUnderSampler(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', XGBClassifier(booster='gbtree', verbosity=0, random_state=seed))
     ]),
     
     'xgb_oversample': ImbPipeline([
         ('sampler', SMOTE(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', XGBClassifier(booster='gbtree', verbosity=0, random_state=seed))
     ]),
     
     'xgb_smoteenn': ImbPipeline([
         ('sampler', SMOTEENN(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', XGBClassifier(booster='gbtree', verbosity=0, random_state=seed))
     ])
 }
@@ -223,7 +241,8 @@ pipelines = {
 xgb_grid = {
   'classifier__learning_rate': [0.1, 0.2, 0.3, 0.4, 0.5, 1.0],
    'classifier__max_depth': [6, 7, 8, 9, 10],
-   'classifier__n_estimators': [100, 200, 300]
+   'classifier__n_estimators': [100, 200, 300],
+   'selector__k': [10, 20, 30, 40]
 }
 
 xgb_results = pipeline(xgb_grid, pipelines, X_train, y_train, X_test, y_test, X_musculus, y_musculus)
@@ -233,16 +252,19 @@ xgb_results = pipeline(xgb_grid, pipelines, X_train, y_train, X_test, y_test, X_
 pipelines = {
     'gb_undersample': ImbPipeline([
         ('sampler', RandomUnderSampler(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', GradientBoostingClassifier(random_state=seed))
     ]),
 
     'gb_oversample': ImbPipeline([
         ('sampler', SMOTE(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', GradientBoostingClassifier(random_state=seed))
     ]),
     
     'gb_smoteenn': ImbPipeline([
         ('sampler', SMOTEENN(random_state=seed)),
+        ('selector', SelectKBest(score_func=f_classif)),
         ('classifier', GradientBoostingClassifier(random_state=seed))
     ])
 }
@@ -251,7 +273,9 @@ pipelines = {
 gb_grid= {
     'classifier__learning_rate': [0.1, 0.2, 0.3, 0.4, 0.5, 1.0],
     'classifier__max_depth': [5, 6, 7, 8, 9, 10],
-    'classifier__n_estimators': [100, 200, 300]
+    'classifier__n_estimators': [100, 200, 300],
+
+    'selector__k': [10, 20, 30, 40]
 }
 
 gb_results = pipeline(gb_grid, pipelines, X_train, y_train, X_test, y_test, X_musculus, y_musculus)
